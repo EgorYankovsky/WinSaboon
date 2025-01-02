@@ -7,6 +7,10 @@
 #include <string>
 #include <chrono>
 #include <ctime>
+#include <cassert>
+#include <sstream>
+#include <array>
+#include <algorithm>
 
 const std::string titleCntThreads = "cntThreads";
 const std::string titleDwSize = "dwSize";
@@ -39,6 +43,32 @@ struct Process {
         wmemcpy(szExeFile, szExeFile_, sizeof(szExeFile_));
     };
     ~Process() {};
+    std::array<std::string, 6> const ConvertToStringArray() {
+        std::stringstream ss;
+        ss << cntThreads;
+        std::string s1 = ss.str();
+
+        ss << dwSize;
+        std::string s2 = ss.str();
+
+        std::string s3 = std::to_string(pcPriClassBase);
+
+        char protoString[260];
+        char defChar = ' ';
+        WideCharToMultiByte(CP_ACP, 0, szExeFile, -1, protoString, 260, &defChar, NULL);
+        std::string s4(protoString);
+        s4.erase(std::remove(s4.begin(), s4.end(), 32), s4.end());
+        s4.erase(std::remove(s4.begin(), s4.end(), -52), s4.end());
+
+
+        ss << th32ParentProcessID;
+        std::string s5 = ss.str();
+
+        ss << th32ProcessID;
+        std::string s6 = ss.str();
+
+        return std::array<std::string, 6> {{s1, s2, s4, s3, s5, s6}};
+    }
 };
 
 static auto getRunningProcesses() -> PROCESSENTRY32W {
@@ -81,7 +111,7 @@ static auto getCurrentTime() -> char*{
     std::time_t now_c = std::chrono::system_clock::to_time_t(now);
     std::tm* now_tm = std::localtime(&now_c);
     char buffer[20];
-    strftime(buffer, sizeof(buffer), "%Y %m %d %H:%M:%S", now_tm);
+    strftime(buffer, sizeof(buffer), "%d/%m/%Y %H:%M:%S", now_tm);
     return buffer;
 }
 
@@ -89,6 +119,23 @@ static size_t getNumberDigit(DWORD num) {
     size_t digit(0);
     for (digit; num > 0; ++digit) num /= 10;
     return digit > 0 ? digit : 1;
+}
+
+static void printWordLine(const std::array<std::string, 6>& words) {
+    if (words[2].size() > 100) return;
+    std::cout << "| ";
+    std::vector<size_t> sizes = { maxTitleCntThreads, maxTitleDwSize, maxTitleSzExeFile, 
+        maxTitlePcPriClassBase, maxTitleTh32ParentProcessID, maxTitleTh32ProcessID };
+
+    for (size_t i(0); i < 6; ++i) {
+        auto spacesAmount = sizes[i] - words[i].size();
+        for (size_t i(0); i < spacesAmount; ++i) std::cout << " ";
+        std::cout << words[i] << " | ";
+    }
+    std::cout << std::endl;
+    size_t iters = maxTitleCntThreads + maxTitleSzExeFile + maxTitleDwSize + maxTitlePcPriClassBase + maxTitleTh32ParentProcessID + maxTitleTh32ProcessID + 19;
+    for (size_t i(0); i < iters; ++i) std::cout << "-";
+    std::cout << std::endl;
 }
 
 static void ConsoleOutput(std::vector<Process> pr) {
@@ -104,20 +151,34 @@ static void ConsoleOutput(std::vector<Process> pr) {
     for (auto& process : pr) {
         if (getNumberDigit(process.cntThreads) > maxTitleCntThreads) maxTitleCntThreads = getNumberDigit(process.cntThreads);
         if (getNumberDigit(process.dwSize) > maxTitleDwSize) maxTitleDwSize = getNumberDigit(process.dwSize);
+        char protoString[260];
+        char defChar = ' ';
+        WideCharToMultiByte(CP_ACP, 0, process.szExeFile, -1, protoString, 260, &defChar, NULL);
+        std::string str(protoString);
+        if (str.size() > maxTitleSzExeFile && str.size() < 100) {
+#ifndef DEBUG
+            std::cout << "*******************************" << std::endl
+                      << "* BAD SYSTEM PROCESS CHECKING *" << std::endl
+                      << "*******************************" << std::endl;
+#endif // !DEBUG
+            maxTitleSzExeFile = str.size();
+            std::cout << str << std::endl;
+        }
         if (getNumberDigit(process.pcPriClassBase) > maxTitlePcPriClassBase) maxTitlePcPriClassBase = getNumberDigit(process.pcPriClassBase);
         if (getNumberDigit(process.th32ParentProcessID) > maxTitleTh32ParentProcessID) maxTitleTh32ParentProcessID = getNumberDigit(process.th32ParentProcessID);
         if (getNumberDigit(process.th32ProcessID) > maxTitleTh32ProcessID) maxTitleTh32ProcessID = getNumberDigit(process.th32ProcessID);
     }
 
-    size_t iters = maxTitleCntThreads + maxTitleDwSize + maxTitlePcPriClassBase + maxTitleTh32ParentProcessID + maxTitleTh32ProcessID + 16;
+    size_t iters = maxTitleCntThreads + maxTitleSzExeFile + maxTitleDwSize + maxTitlePcPriClassBase + maxTitleTh32ParentProcessID + maxTitleTh32ProcessID + 19;
     for (size_t i(0); i < iters; ++i) std::cout << "-";
     std::cout << std::endl;
-    std::cout << "| " << titleCntThreads << " | " << titleDwSize << " | " <<
-        titlePcPriClassBase << " | " << titleTh32ParentProcessID << " | " <<
-        titleTh32ProcessID << " |";
-    std::cout << std::endl;
-    for (size_t i(0); i < iters; ++i) std::cout << "-";
-    std::cout << std::endl;
+    printWordLine(std::array<std::string, 6> {titleCntThreads, titleDwSize, titleSzExeFile, 
+        titlePcPriClassBase, titleTh32ParentProcessID, titleTh32ProcessID});
+
+    for (auto& process : pr) {
+        printWordLine(process.ConvertToStringArray());
+    }
+
 }
 
 int main() {
